@@ -1,0 +1,134 @@
+services:
+
+  kafka1:
+    image: confluentinc/cp-kafka:7.8.3
+    container_name: kafka1
+    ports:
+      - "29092:29092"
+    networks:
+      - kafka-network
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka1:9093,2@kafka2:9093
+
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka1:9092,EXTERNAL://localhost:29092
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_RETENTION_MS: 300000
+
+    volumes:
+      - kafka1_data:/var/lib/kafka/data
+
+  kafka2:
+    image: confluentinc/cp-kafka:7.8.3
+    container_name: kafka2
+    ports:
+      - "29093:29093"
+    networks:
+      - kafka-network
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 2
+      KAFKA_PROCESS_ROLES: broker,controller
+
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka1:9093,2@kafka2:9093
+
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29093,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka2:9092,EXTERNAL://localhost:29093
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_RETENTION_MS: 300000
+
+    volumes:
+      - kafka2_data:/var/lib/kafka/data
+
+  kafka-ui:
+    image: kafbat/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8080:8080"
+    networks:
+      - kafka-network
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka1:9092,kafka2:9092
+    depends_on:
+      - kafka1
+      - kafka2
+
+  playground-service:
+    image: himanitrivedi/playground-service:1.0
+    container_name: playground-service
+    ports:
+      - "8083:8081"
+    networks:
+      - kafka-network
+    environment:
+      SERVER_PORT: 8081
+      KAFKA_BOOTSTRAP_SERVERS: kafka1:9092,kafka2:9092
+
+    depends_on:
+      - kafka1
+      - kafka2
+
+  notification-service:
+    image: himanitrivedi/notification-kafka-1:1.1
+    container_name: notification-service
+    ports:
+      - "8084:8082"
+      - "8085:8085"
+    networks:
+      - kafka-network
+    environment:
+      SERVER_PORT: 8082
+      API_BASE_URL: http://playground-service:8081
+      SOCKET_IO_HOST: notification-service
+      SOCKET_IO_PORT: 8085
+      SOCKET_IO_SERVER: http://notification-service:8085
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka1:9092,kafka2:9092
+
+    depends_on:
+      - kafka1
+      - kafka2
+      - playground-service
+
+  frontend:
+    image: himanitrivedi/kafka-playground-ui:1.0
+    ports:
+      - "3000:80"
+    environment:
+      # Runtime config (written to config.js so the app uses these)
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8083}
+      VITE_SOCKET_IO_SERVER: ${VITE_SOCKET_IO_SERVER:-http://localhost:8085}
+
+    depends_on:
+      - kafka1
+      - kafka2
+      - playground-service
+      - notification-service
+
+volumes:
+  kafka1_data:
+  kafka2_data:
+
+networks:
+  kafka-network:
+    driver: bridge
